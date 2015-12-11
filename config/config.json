@@ -1,0 +1,10 @@
+{
+    "host": "localhost",
+    "port": 4001,
+    "logentries": {
+        "enabled": false,
+        "token": "",
+        "level": "info"
+    },
+    "loglevel": "debug"
+}

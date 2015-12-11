@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Browser connection</title>
+	<script src="https://cdn.socket.io/socket.io-1.3.7.js"></script>
+	<style>
+		* {
+			margin:0;
+			padding:0;
+			border:0;
+		}
+		body {
+			position: relative;
+		}
+		#login,#chat  {
+			opacity: 0;
+			position: relative;
+			transition:1s;
+		}
+		#login {
+			position: absolute;
+			top:0;
+			left:0;
+			width:100%;
+			height:100%;
+			background:#BEBEBE;
+			z-index: 2;
+		}
+		#login div {
+			margin: 0 auto;
+		    width: 40%;
+		    border: 1px solid white;
+		    border-radius: 15px;
+		    height: 200px;
+		    position: relative;
+		    top: 150px;
+		    background:#5F8696;
+		}
+		div#login-window p {
+		    text-align: center;
+		    color:white;
+		    font-weight:bold;
+		    margin-top:50px;
+		}
+		div#login-window input[type="name"] {
+		    display:block;
+		    width:80%;
+		    margin:15px auto;
+		    padding:6px 0;
+		    border-radius:4px;
+		    border:0 !important;
+		    text-align:center;
+		}
+		div#login-window input[type="submit"] {
+		    display:block;
+		    width:80%;
+		    margin:15px auto;
+		    padding:6px;
+		    border-radius:4px
+		}
+		#test {
+		    width: 80%;
+		    margin: 0 auto;
+		    position: relative;
+		    top: 2%;
+		    height: 50%;
+		    border: 1px solid;
+		    overflow-y: scroll;
+		    overflow-x: hidden;
+		    white-space: pre-line;
+		    padding: .5%;
+		}
+		p.new-message {
+			animation:fadeIn .5s;
+			position: relative;
+		}
+		#chat {
+			width: 81%;
+			padding: 10px;
+			margin: 25px auto 0;
+		}
+		#chat input {
+			width: 80%;
+		    border: 1px solid #d7d7d7;
+		    border-radius: 4px;
+		    padding: 4px 3px;
+		}
+		#chat button {
+			border: 1px solid #d7d7d7;
+		    border-radius: 4px;
+		    padding: 4px 3px;
+		    width: 15%;
+		    float: right;
+		}
+		@keyframes slideTop {
+			0% {
+				top:-150px;
+			}
+			100% {
+				top:150px;
+			}
+		}
+		@-webkit-keyframes slideTop {
+			0% {
+				top:-150px;
+			}
+			100% {
+				top:150px;
+			}
+		}
+		@keyframes fadeIn{
+			0% {
+				opacity: 0;
+				top:40px;
+			}
+			100% {
+				opacity: 1;
+				top:0px;
+			}
+		}
+		@-webkit-keyframes fadeIn{
+			0% {
+				opacity: 0;
+				top:40px;
+			}
+			100% {
+				opacity: 1;
+				top:0px;
+			}
+		}
+	</style>
+</head>
+<body>
+	<script>
+		document.body.style.height = window.innerHeight+'px';
+	</script>
+	<div id="test"></div>
+	<div id="login">
+		<div id="login-window">
+			<p>Type your name</p>
+			<input type="name" placeholder="type here" id="log-in">
+			<input type="submit" name="login" onclick="login(this)">
+		</div>
+	</div>
+	<div id="chat">
+		<input type="text" id="message-body">
+		<button>Send</button>
+	</div>
+	<script>
+	var socket = io("http://antattack.herokuapp.com/");
+	socket.on('connect', function() {
+		login();
+	});
+	var test = getE('#test');
+	socket.on('message', function(msg){
+		var messages = msg.split('~');
+    	var contents = messages[0].split('|');
+    	console.log(msg);
+		test.innerHTML += '<p class="new-message">'+contents[1]+'</p>';
+		animateMessages();
+	});
+	function getE(element) {
+		var selector = element.charAt(0);
+		var query = element.slice(1);
+		if(selector=="#") {
+			return document.getElementById(query);
+		} else if(selector==".") {
+			return document.getElementsByClassName(query);
+		} else {
+			return document.getElementsByTagName(element);
+		}
+	}
+	function animateMessages() {
+		clearTimeout(y);
+		var y = setTimeout(function(){
+			var newMessages = getE('.new-message');
+			for(var i=0;i<newMessages.length;i++) {
+				newMessages[i].className = 'old-message';
+			}
+		}, 600);
+	}
+	function login(arg) {
+		if(arg!=null){
+			this.stylepointerEvents ='none';			
+			socket.send('CONNECT|'+getE('#log-in').value+'~');
+			getE("#login").style.opacity = 0;
+			var x = setTimeout(function(){getE("#login").style.display = 'none';getE('#chat').style.opacity=1;},1100);
+			test.innerHTML += '<p class="new-message">Hi '+getE('#log-in').value+'!</p>';
+			animateMessages();
+		} else {
+			getE("#login").style.opacity = 1;
+			getE("#login-window").style.animation = 'slideTop 1s';
+		}
+	}
+	function sendSomething(){
+		var message = getE('#message-body');
+		socket.send(message.value);
+		message.value = "";
+	}
+	getE('button')[0].addEventListener('click',function(){ sendSomething()});
+	</script>
+</body>
+</html>
