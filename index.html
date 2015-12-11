@@ -148,7 +148,7 @@
 		<button>Send</button>
 	</div>
 	<script>
-	var socket = io('localhost:4001');
+	var socket = io('http://localhost:4001');
 	socket.on('connect', function() {
 		login();
 	});
@@ -157,7 +157,7 @@
 		var messages = msg.split('~');
     	var contents = messages[0].split('|');
     	console.log(msg);
-		test.innerHTML += '<p class="new-message">'+contents[1]+'</p>';
+		test.innerHTML += '<p class="new-message">'+msg+'</p>';
 		animateMessages();
 	});
 	function getE(element) {
