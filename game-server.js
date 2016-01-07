@@ -8,12 +8,18 @@ var winston = require('winston'),
 
 var gameServer;
 var DELIMITER = '~';
-
+/* Map grid prototype*/
+var Grid = function(width,height) {
+    this.space = new Array(width * height);
+    this.width = width;
+    this.height = height;
+}
 function GameServer() {
     gameServer = this;
     this.idCounter = 0;
     this.players = [];
     this.sockets = [];
+    this.grid = new Grid(50,50);
 }
 
 function route(messageParts, socket, callback) {
@@ -25,6 +31,9 @@ function route(messageParts, socket, callback) {
             gameServer.players.push(p);
             reply = ('CONNECTED' + '|' + p.id);
             broadcast = (socket, p.id + '|' + 'CONNECTED' + '|' + p.nickname);
+            break;
+        case 'GRID' :
+            reply = ( 'GRID|' + gameServer.grid.width + '|' + gameServer.grid.height );
             break;
         case 'LOCATION':
             loc = new Location(messageParts[1], messageParts[2], messageParts[3]);
@@ -83,6 +92,11 @@ function route(messageParts, socket, callback) {
             p = findPlayer(socket, gameServer.players);
             broadcast = (socket, p.id + '|' + 'DISCONNECT');
             break;
+        case 'CHAT':
+            p = findPlayer(socket, gameServer.players);
+            broadcast =  p.nickname + ' : "' +messageParts[1]+ '";';
+            reply = 'Me : "' +messageParts[1]+ '";';
+            break;
         default:
             winston.error('No API for this call');
             error = ('ERROR|' + messageParts);
@@ -111,7 +125,6 @@ GameServer.prototype.processMessage = function (data, socket, callback) {
         route(messages, socket, callback);
     });
 };
-
 function Player(id, nickname, socket) {
     this.id = id;
     this.nickname = nickname;
