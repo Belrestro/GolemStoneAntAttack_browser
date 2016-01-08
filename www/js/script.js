@@ -50,23 +50,48 @@ function login(arg) {
 		getE('#log-in').focus();
 	}
 }
-/* Reads chat input, wraps message to socket format*/
-function sendSomething(){
-	var message = getE('#message-body');
-	socket.send("CHAT|"+message.value);
-	scrollDialog('bottom');
+/* Wraps message to socket format*/
+function sendSocket(type, message){
+	var delimeter = '~';
+	socket.send(type+"|"+message+delimeter);
+}
+function sendChatMessage(input) {
+	sendSocket('CHAT',input.value);
 	//adding message history items
-	if(!messageHistory) messageHistory = {pos:-1, array:[]};
-	messageHistory.array.unshift(message.value);
+	if(!messageHistory) messageHistory = new MessageHistory();
+	messageHistory.add(input);
 	messageHistory.pos = -1;
-	//only last 10 counts
-	if (messageHistory.array.length > 10) messageHistory.array.pop();
-	message.value = "";
+	input.value = "";
+	scrollDialog('bottom');
 }
 /* --- Createing constructors --- */
 var Player = function(id, nickname) {
 	this.id = id;
 	this.nickname = nickname;
+}
+var MessageHistory = function() {
+	this.pos = -1;
+	this.array = [];
+	this.limit = 10;
+	this.previous = function(input) {
+		if(this.pos < this.array.length-1)
+			this.pos++;
+		input.value = this.array[this.pos];
+	};
+	this.next = function(input) {
+		if(this.pos >-1)
+			this.pos--;
+		if(this.pos != -1)
+			input.value = this.array[this.pos];
+		else 
+			input.value = '';
+	};
+	this.add = function(input) {
+		this.array.unshift(input.value);
+		this.pos = -1;
+		//only last 10 counts
+		if (this.array.length > this.limit) this.array.pop();
+	};
 }
 var Grid = function(width,height) {
     this.space = new Array(width * height);
@@ -122,7 +147,7 @@ socket.on('message', function(msg){
 });
 /* --- Setting all requires listeners --- */
 getE('button')[0].addEventListener('click',function(){ 
-	sendSomething();
+	sendChatMessage(getE('#message-body'));
 });
 //siply adding an option to login with 'ENTER'
 getE('#log-in').addEventListener('keypress', function(){
@@ -131,17 +156,9 @@ getE('#log-in').addEventListener('keypress', function(){
 //reading the history, and adding option to send message on key 'ENTER'
 getE('#message-body').addEventListener('keydown', function() {
 	if(event.keyCode == 38) {
-		var message = getE('#message-body');
-		if(messageHistory.pos < messageHistory.array.length-1)
-			messageHistory.pos++;
-		message.value = messageHistory.array[messageHistory.pos];
+		messageHistory.previous(getE('#message-body'));
 	} else if (event.keyCode == 40) {
-		var message = getE('#message-body');
-		if(messageHistory.pos >-1)
-			messageHistory.pos--;
-		if(messageHistory.pos != -1)
-			message.value = messageHistory.array[messageHistory.pos];
-		else message.value = '';
+		messageHistory.next(getE('#message-body'));
 	} else if (event.keyCode == 13) 
-		sendSomething();
+		sendChatMessage(getE('#message-body'));;
 });
