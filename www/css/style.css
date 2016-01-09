@@ -6,7 +6,7 @@
 body {
 	position: relative;
 }
-#login,#chat  {
+#login,#chat-inputs  {
 	opacity: 0;
 	position: relative;
 	transition:1s;
@@ -52,38 +52,43 @@ div#login-window input[type="submit"] {
     padding:6px;
     border-radius:4px
 }
+#chat {
+	width:100%;
+	height: 20%;
+    min-height: 150px;
+    position: absolute;
+    bottom: 0;
+    left: 0;
+}
 #chat-dialog {
-    width: 80%;
+    width: 95%;
     margin: 0 auto;
     position: relative;
     top: 2%;
-    height: 50%;
+    height: 55%;
     border: 1px solid;
     overflow-y: scroll;
     overflow-x: hidden;
     white-space: pre-line;
     padding: .5%;
 }
-p.new-message {
-	animation:fadeIn .5s;
+#chat-dialog p.message {
+	animation:fadeIn .8s;
 	position: relative;
 }
-p.message {
-	animation:fadeIn .5s;
-	position: relative;
+#chat-inputs {
+    width: 96%;
+    padding: 10px;
+    margin: 2% auto 0;
+    height: 18%;
 }
-#chat {
-	width: 81%;
-	padding: 10px;
-	margin: 25px auto 0;
-}
-#chat input {
+#chat-inputs input {
 	width: 80%;
     border: 1px solid #d7d7d7;
     border-radius: 4px;
     padding: 4px 3px;
 }
-#chat button {
+#chat-inputs button {
 	border: 1px solid #d7d7d7;
     border-radius: 4px;
     padding: 4px 3px;
