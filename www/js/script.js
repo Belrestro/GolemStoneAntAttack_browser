@@ -1,6 +1,8 @@
 var socket = io('http://localhost:4001');
 var chatDialog = getE('#chat-dialog');
-var grid, messageHistory, player;
+/* Create all important global variables*/
+var grid, messageHistory, player, map;
+var players = {};
 /* Simpify DOM*/
 function getE(element) {
 	var selector = element.charAt(0);
@@ -13,23 +15,15 @@ function getE(element) {
 		return document.getElementsByTagName(element);
 	}
 }
-/* After player sends message sends to the last message he sended. ||| Extending*/
+/* After player sends message sends to the last message he sended. && Under construction*/
 function scrollDialog(direction) {
 	if (direction == 'bottom') {
 		var chatDialog = getE('#chat-dialog');
 		clearTimeout(x);
-		var x = setTimeout(function() {chatDialog.scrollTop =chatDialog.scrollHeight}, 100);
+		var x = setTimeout(function() {chatDialog.scrollTop = chatDialog.scrollHeight}, 100);
 	}
 }
-/* The correct way of displayin any kind of messges ||| may be applied to other sourses*/
-function displayMessage(message, parent) {
-	var msg = document.createElement('P');
-	msg.className = 'message';
-	var content = document.createTextNode(message);
-	msg.appendChild(content);
-	parent.appendChild(msg);
-}
-/* Makes sure that player would have a nickname, and perform prepearing actions*/
+/* Makes sure that player would have a nickname, and perform prepearing actions && Under construction*/
 function login(arg) {
 	if(arg!= "start"){
 		//Prevents user from creating multiple connections(weak)
@@ -38,9 +32,9 @@ function login(arg) {
 		socket.send('CONNECT|'+getE('#log-in').value+'~');
 		//Visualize 
 		getE("#login").style.opacity = 0;
-		var x = setTimeout(function(){getE("#login").style.display = 'none';getE('#chat').style.opacity=1;},1100);
+		var x = setTimeout(function(){getE("#login").style.display = 'none';getE('#chat-inputs').style.opacity=1;},1100);
 		//Set user for chat
-		displayMessage('Hi '+getE('#log-in').value+'!', chatDialog);
+		insertTag('P','Hi '+getE('#log-in').value+'!', chatDialog, "message");
 		getE('#message-body').focus();
 	} else {
 		//Visualize 
@@ -50,12 +44,37 @@ function login(arg) {
 		getE('#log-in').focus();
 	}
 }
+function getRandom(max){
+	return Math.floor(Math.random()*max);
+}
+/* Proper insertion to DOM*/
+function insertTag(tag, value, parent, className, styles) {
+	var child = document.createElement(tag);
+	if(className)
+		child.className = className;
+	if(value)
+		child.appendChild(document.createTextNode(value));
+	if(styles) {
+		var styleRules = styles.split(';');
+		styleRules.forEach(function(rule){
+			if(!rule)
+				return;
+			var styleRule = rule.split(':');
+			styleRule.map(function(part){
+				return part.trim();
+			});
+			child.style[styleRule[0]] = styleRule[1];
+		});
+	}
+	parent.appendChild(child);
+}
 /* Wraps message to socket format*/
 function sendSocket(type, message){
 	var delimeter = '~';
 	socket.send(type+"|"+message+delimeter);
 }
 function sendChatMessage(input) {
+	if(!input.value) return;
 	sendSocket('CHAT',input.value);
 	//adding message history items
 	if(!messageHistory) messageHistory = new MessageHistory();
@@ -65,10 +84,46 @@ function sendChatMessage(input) {
 	scrollDialog('bottom');
 }
 /* --- Createing constructors --- */
-var Player = function(id, nickname) {
+/* For now color argument represents identification of current player or affiliation to team, team object will be created later*/
+var Player = function(id, nickname, coordinates, color) {
 	this.id = id;
 	this.nickname = nickname;
-}
+	this.coordinates = coordinates;
+	this.color = color;
+};
+var Vector = function(x,y,z) {
+	this.x = Number(x);
+	this.y = Number(y);
+	this.z = Number(z);
+	this.plus = function(vector) {
+		return new Vector(this.x + vector.x, this.y + vector.y, this.z + vector.z);
+	};
+	this.minus = function(vecotr) {
+		return new Vector(this.x - vector.x, this.y - vector.y, this.z - vector.z );
+	};
+};
+var directions = {
+	"n": new Vector(0,1,0),
+	"e": new Vector(1,0,0),
+	"s": new Vector(0,-1,0),
+	"w": new Vector(-1,0,0),
+	"u": new Vector(0,0,1),
+	"d": new Vector(0,0,-1)
+};
+var Grid = function(width,height) {
+    this.space = new Array(width * height);
+    this.width = Number(width);
+    this.height = Number(height);
+    this.isInside = function(vector) {
+        return vercor.x >= 0 && vector.width < this.x && vector.y >= 0 && vector.y < this.height;
+    };
+    this.get = function(vector) {
+        return this.space[vector.x + (this.width * vector.y)];
+    };
+    this.set = function(vector, value) {
+        this.space[vector.x + (this.width * vector.y)] = value;
+    };
+};
 var MessageHistory = function() {
 	this.pos = -1;
 	this.array = [];
@@ -92,31 +147,37 @@ var MessageHistory = function() {
 		//only last 10 counts
 		if (this.array.length > this.limit) this.array.pop();
 	};
-}
-var Grid = function(width,height) {
-    this.space = new Array(width * height);
-    this.width = width;
-    this.height = height;
-    this.isInside = function(vector) {
-        return vercor.x >= 0 && vector.width < this.x && vector.y >= 0 && vector.y < this.height;
-    };
-    this.get = function(vector) {
-        return this.space[vector.x + this.width * vector.y];
-    };
-    this.set = function(vector, value) {
-        this.space[vector.x + this.width * vector.y] = value;
-    };
-}
-var Vector = function(x,y) {
-	this.x = x;
-	this.y = y;
-	this.plus = function(vector) {
-		return new Vector(this.x + vector.x, this.y + vector.y);
+};
+var Map = function(grid, players, tagId, scale, landscape, legend) {
+	this.grid = grid;
+	this.players = players;
+	this.tagId = tagId;
+	// scale is shuld be : "this/original" "2/1"
+	this.scale = scale;
+	this.adjustScale = function(){
+		var scale = this.scale;
+		if(!getE('style')[1])
+			insertTag('STYLE',null,getE('head')[0]);
+		var rules = [];
+		rules.push('#'+this.tagId+'{width:'+(this.grid.width*scale)+'px;height:'+(this.grid.height*scale)+'px;}');
+		rules.push('.player {width:'+(1*scale)+'px;height:'+(1*scale)+'px;}');
+		rules.forEach(function(rule){
+			document.styleSheets[1].insertRule(rule, 0);
+		});
 	};
-	this.minus = function(vecotr) {
-		return new Vector(this.x - vector.x, this.y - vector.y);
+	this.placePlayer = function(player, vector) {
+		var styles = 'background-color:'+player.color+';';
+		styles += 'left:'+(vector.x*this.scale)+'px;';
+		styles += 'top:'+(vector.y*this.scale)+'px;';
+		insertTag('SPAN', null, getE('#'+this.tagId), 'player '+player.id, styles);
 	};
-}
+	this.movePlayer = function(player, vector) {
+
+	};
+	this.removePlayer = function(player){
+		getE('#'+this.tagId).removeChild(getE('.player '+player.id)[0]);
+	};
+};
 /* --- Connection actions --- */
 socket.on('connect', function() {
 	login('start');
@@ -129,24 +190,66 @@ socket.on('message', function(msg){
 	switch(parts[0]){
 		case 'GRID':
 			grid = new Grid(Number(parts[1]),Number(parts[2]));
-			console.log(grid);
+			map = new Map(grid, players,'map__sandbox',5/1);
+			map.adjustScale();
 			break;
 		case 'CONNECTED':
-			player = new Player(parts[1], getE('#log-in').value);
-			console.log(player);
+			var coordinates = new Vector(getRandom(grid.width),getRandom(grid.height),0);
+			sendSocket('LOCATION',coordinates.x+'|'+coordinates.y+'|'+coordinates.z)
+			player = new Player(parts[1], getE('#log-in').value, coordinates, 'blue');
+			players.me = player;
+			grid.set(coordinates, player);
+			map.placePlayer(player, player.coordinates);
+			socket.send('PLAYERSINFO~');
 			break;
 		default:
+			// Everething that goes on with players
 			if(!isNaN(parts[0])){
-				displayMessage(parts[2]+' joined;',chatDialog);
+				switch(parts[1]) {
+					case 'CONNECTED':
+						players[parts[0]] = new Player(parts[0],parts[2],null,'red');
+						insertTag('P', parts[2]+' joined;', chatDialog, 'message');
+						break;
+					case 'PLAYERSINFO':
+						if(!players[parts[0]]) {
+							players[parts[0]] = new Player(parts[0],parts[2],new Vector(parts[3],parts[4],parts[5]),'red');
+							var player = players[parts[0]];
+							grid.set(player.coordinates, player);
+				    		map.placePlayer(player, player.coordinates);
+				    	}
+						break;
+				    case 'LOCATION':
+				    	var player = players[parts[0]];
+				    	var coordinates = player.coordinates;
+				    	var newCoordinates = new Vector(parts[2],parts[3],parts[4]);
+				    	if(!coordinates) {
+				    		player.coordinates = newCoordinates;
+				    		grid.set(newCoordinates, player);
+				    		map.placePlayer(player, player.coordinates);
+				    	} else {
+				    		grid.set(coordinates, null);
+				    		grid.set(newCoordinates, player);
+				    	}
+				    	break;
+				    case 'DISCONNECT':
+				    	var player = players[parts[0]];
+				    	map.removePlayer(player);
+				    	grid.set(player.coordinates, null);
+				    	delete players[parts[0]];
+				    	break;
+					default:
+						console.log(parts);
+					    break;
+				}
 				break;
 			}
 			var messages = msg.split('~');
-			displayMessage(messages[0],chatDialog);
+			insertTag('P', messages[0], chatDialog ,'message');
 			break;
 	}
 });
 /* --- Setting all requires listeners --- */
-getE('button')[0].addEventListener('click',function(){ 
+getE('#send-message').addEventListener('click',function(){ 
 	sendChatMessage(getE('#message-body'));
 });
 //siply adding an option to login with 'ENTER'

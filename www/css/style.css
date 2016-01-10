@@ -52,25 +52,50 @@ div#login-window input[type="submit"] {
     padding:6px;
     border-radius:4px
 }
+#map {
+	width: 100%;
+	height: 50%;
+	position: relative;
+}
+#map .player {
+	position: absolute;
+	display: inline-block;
+	box-shadow: 0 0 1px;
+	border-radius: 50%;
+}
+#map .player:before, #map .player:after {
+	display: inline-block;
+	position: absolute;
+}
+#map__sandbox {
+	position: relative;
+	margin:0 auto;
+	top:25px;
+	border:1px solid black;
+	width:100px;
+	height:100px;
+	background-color:#e4e4e4;
+}
 #chat {
 	width:100%;
 	height: 26%;
-    min-height: 200px;
+    max-height: 200px;
     position: absolute;
     bottom: 0;
     left: 0;
 }
 #chat-dialog {
     width: 95%;
-    margin: 0 auto;
     position: relative;
     top: 2%;
-    height: 55%;
+    height: 38%;
+	margin:0 auto;
     border: 1px solid;
     overflow-y: scroll;
     overflow-x: hidden;
     white-space: pre-line;
     padding: .5%;
+    padding-bottom:40px;
 }
 #chat-dialog p.message {
 	animation:fadeIn .8s;

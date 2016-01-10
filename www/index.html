@@ -10,7 +10,6 @@
 	<script>
 		document.body.style.height = window.innerHeight+'px';
 	</script>
-	<div id="chat-dialog"></div>
 	<div id="login">
 		<div id="login-window">
 			<p>Type your name</p>
@@ -18,9 +17,17 @@
 			<input type="submit" id="login-button" onclick="login()">
 		</div>
 	</div>
+	<div id="map">
+		<div id="map__sandbox">
+			
+		</div>
+	</div>
 	<div id="chat">
-		<input type="text" id="message-body">
-		<button>Send</button>
+		<div id="chat-dialog"></div>
+		<div id="chat-inputs">
+			<input type="text" id="message-body">
+			<button id="send-message">Send</button>
+		</div>
 	</div>
 	<script src="js/script.js"></script>
 </body>

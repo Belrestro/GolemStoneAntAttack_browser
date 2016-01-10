@@ -97,6 +97,14 @@ function route(messageParts, socket, callback) {
             broadcast =  p.nickname + ' : "' +messageParts[1]+ '";';
             reply = 'Me : "' +messageParts[1]+ '";';
             break;
+        case 'PLAYERSINFO':
+            p = findPlayer(socket, gameServer.players);
+            gameServer.players.forEach(function(player){
+                if(!player.socket.disconnected && p.id != player.id)
+                    socket.write(player.id+'|PLAYERSINFO|'+player.nickname+'|'+player.location.toString()+'~');
+                }
+            );
+            break;
         default:
             winston.error('No API for this call');
             error = ('ERROR|' + messageParts);

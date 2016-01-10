@@ -128,6 +128,13 @@ io.on('connection', function (socket) {
     });
     socket.on('disconnect', function () {
         winston.info('SOCKET client disconnected');
+        //In case of player leaves unforunate, tells client
+        gameServer.players.forEach(function(player){
+            if(!player.socket.disconnectAnnounced && player.socket.disconnected) {
+                player.socket.disconnectAnnounced = true;
+                socket.broadcast.write(player.id+'|DISCONNECT~');
+            }
+        });
     });
 });
 
