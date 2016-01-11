@@ -92,10 +92,14 @@ app.get('/', function (req, res) {
 });
 
 app.get('/chat', function (req, res) {
-    res.send('Here should be a chat');
-    winston.warn('No chat! Someone trying to find it');
+    res.sendFile(__dirname + '/www/index.html');
 });
-
+app.get('/js/script.js', function (req, res) {
+    res.sendFile(__dirname + '/www/js/script.js');
+});
+app.get('/css/style.css', function (req, res) {
+    res.sendFile(__dirname + '/www/css/style.css');
+});
 app.get('/game', function (req, res) {
     res.send('Here should be the game');
     winston.debug(req);

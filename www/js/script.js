@@ -178,6 +178,51 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 		getE('#'+this.tagId).removeChild(getE('.player '+player.id)[0]);
 	};
 };
+/* To safe some features and be more Player frendly*/
+// --> Cookies work quite slow... 
+// --> takes from 20-40 to 700 ms to done all transitions
+// --> be awere if it
+var Cookies = function() {
+	this.content = document.cookie;
+	this.read = function(){
+		var rawCookies = this.content.split(',');
+		var freshCookies = {};
+		rawCookies.map(function(cookie){
+			var data = cookie.split(':');
+			if(data[0] && data[0]!='_')
+				freshCookies[data[0]] = data[1];
+		});
+		return freshCookies;
+	};
+	this.write = function(cookies, renewAll){
+		var keys = Object.keys(cookies);
+		// to save all existing(or rewrite old) features, and add all new
+		var newCookies = renewAll ? {} : this.read();
+		keys.forEach(function(newCookie){
+			newCookies[newCookie] = cookies[newCookie];
+		});
+		var cookie = "";
+		var keys = Object.keys(newCookies);
+		keys.forEach(function(key, index){
+			cookie += key+':'+newCookies[key];
+			if(index<keys.length-1)
+				cookie += ",";
+		});
+		document.cookie = cookie;
+	};
+	this.remove = function(cookieKey){
+		var oldCookies = this.read();
+		if(Object.keys(oldCookies).length == 1) {
+			this.clearAll();
+			return;
+		}
+		delete oldCookies[cookieKey];
+		this.write(oldCookies, true);
+	};
+	this.clearAll = function(){
+		document.cookie = '_';
+	};
+}
 /* --- Connection actions --- */
 socket.on('connect', function() {
 	login('start');
