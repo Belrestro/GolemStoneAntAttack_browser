@@ -72,8 +72,6 @@ div#login-window input[type="submit"] {
 	margin:0 auto;
 	top:25px;
 	border:1px solid black;
-	width:100px;
-	height:100px;
 	background-color:#e4e4e4;
 }
 #chat {
