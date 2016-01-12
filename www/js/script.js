@@ -1,8 +1,7 @@
 var socket = io('http://localhost:4001');
 var chatDialog = getE('#chat-dialog');
 /* Create all important global variables*/
-var grid, messageHistory, player, map;
-var players = {};
+var messageHistory, world, movementInterval;
 /* Simpify DOM*/
 function getE(element) {
 	var selector = element.charAt(0);
@@ -85,10 +84,17 @@ function sendChatMessage(input) {
 }
 /* --- Createing constructors --- */
 /* For now color argument represents identification of current player or affiliation to team, team object will be created later*/
-var Player = function(id, nickname, coordinates, color) {
+var Player = function(id, nickname, position, color) {
 	this.id = id;
 	this.nickname = nickname;
-	this.coordinates = coordinates;
+	this.position = position;
+	// points per second
+	this.speed = 5;
+	this.actions = new Actions(this, 'move');
+	// movement = 1s/(speed * acceleration)
+	this.acceleration = function() {
+
+	};
 	this.color = color;
 };
 var Vector = function(x,y,z) {
@@ -98,8 +104,11 @@ var Vector = function(x,y,z) {
 	this.plus = function(vector) {
 		return new Vector(this.x + vector.x, this.y + vector.y, this.z + vector.z);
 	};
-	this.minus = function(vecotr) {
+	this.minus = function(vector) {
 		return new Vector(this.x - vector.x, this.y - vector.y, this.z - vector.z );
+	};
+	this.toString = function() {
+		return this.x+"|"+this.y+"|"+this.z;
 	};
 };
 var directions = {
@@ -122,6 +131,10 @@ var Grid = function(width,height) {
     };
     this.set = function(vector, value) {
         this.space[vector.x + (this.width * vector.y)] = value;
+    };
+    this.reset = function(value, newVector){
+    	this.set(value.position, null);
+    	this.set(newVector, value);
     };
 };
 var MessageHistory = function() {
@@ -148,12 +161,16 @@ var MessageHistory = function() {
 		if (this.array.length > this.limit) this.array.pop();
 	};
 };
+/* Landscape & Legend are on development*/
 var Map = function(grid, players, tagId, scale, landscape, legend) {
 	this.grid = grid;
 	this.players = players;
 	this.tagId = tagId;
 	// scale is shuld be : "this/original" "2/1"
 	this.scale = scale;
+	this.isInMap = function(object){
+		return getE('#'+this.tagId).indexOf(object)> -1;
+	};
 	this.adjustScale = function(){
 		var scale = this.scale;
 		if(!getE('style')[1])
@@ -171,8 +188,12 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 		styles += 'top:'+(vector.y*this.scale)+'px;';
 		insertTag('SPAN', null, getE('#'+this.tagId), 'player '+player.id, styles);
 	};
-	this.movePlayer = function(player, vector) {
-
+	this.movePlayer = function(player) {
+		var playerTag = getE('.player '+player.id)[0];
+		var style = playerTag.style;
+		var pos = player.position;
+		style.left = ((pos.x)*this.scale)+'px';
+		style.top = ((pos.y)*this.scale)+'px';
 	};
 	this.removePlayer = function(player){
 		getE('#'+this.tagId).removeChild(getE('.player '+player.id)[0]);
@@ -180,7 +201,7 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 };
 /* To safe some features and be more Player frendly*/
 // --> Cookies work quite slow... 
-// --> takes from 20-40 to 700 ms to done all transitions
+// --> takes 20-60 ms to done all transitions
 // --> be awere if it
 var Cookies = function() {
 	this.content = document.cookie;
@@ -222,11 +243,61 @@ var Cookies = function() {
 	this.clearAll = function(){
 		document.cookie = '_';
 	};
-}
+};
+var World = function(grid, map, players) {
+	this.grid = grid;
+	this.map = map;
+	this.players = players;
+	this.setInMotion = function(player, direction){
+		var position = player.position;
+		var newVector = directions[direction];
+		console.log(position.plus(newVector));
+		player.position = position.plus(newVector);
+		sendSocket('LOCATION',position.toString());
+		this.grid.reset(player, newVector);
+		this.map.movePlayer(player, newVector);
+	};
+	this.addPlayer = function(id, player, position){
+		this.players[id] = player;
+		if(position) {
+			this.grid.set(position, player);
+			this.map.placePlayer(player, player.position);
+		}
+	};
+	this.removePlayer = function(player){
+		this.map.removePlayer(player);
+    	this.grid.set(player.position, null);
+    	delete players[parts[0]];
+	};
+	this.setLocation = function(player, location){
+		player.position = location;
+		this.grid.set(location, player);
+		this.map.placePlayer(player, player.position);
+	};
+};
+var Actions = function(performer, move, pick, fight, reviev){
+	this.performer = performer;
+	if(move) {
+		this.move = function(direction){
+			if(!movementInterval){
+				var performer = this.performer;
+				var acceleration = performer.acceleration() || 1;
+				movementInterval = setInterval(function(){	
+					world.setInMotion(performer, direction);
+				},1000 / (this.performer.speed*acceleration));
+			}
+		};
+		this.stop = function() {
+			clearInterval(movementInterval);
+			movementInterval = null;
+		};
+	}
+};
 /* --- Connection actions --- */
 socket.on('connect', function() {
 	login('start');
-	socket.send('GRID~');
+	world = new World(null, null, {});
+	sendSocket('GRID');
 });
 /* Sort incoming messages*/
 socket.on('message', function(msg){
@@ -234,53 +305,44 @@ socket.on('message', function(msg){
 	parts = parts[0].split('|');
 	switch(parts[0]){
 		case 'GRID':
-			grid = new Grid(Number(parts[1]),Number(parts[2]));
-			map = new Map(grid, players,'map__sandbox',5/1);
-			map.adjustScale();
+			world.grid = new Grid(Number(parts[1]),Number(parts[2]));
+			world.map = new Map(world.grid, world.players,'map__sandbox',6/1);
+			world.map.adjustScale();
 			break;
 		case 'CONNECTED':
-			var coordinates = new Vector(getRandom(grid.width),getRandom(grid.height),0);
-			sendSocket('LOCATION',coordinates.x+'|'+coordinates.y+'|'+coordinates.z)
-			player = new Player(parts[1], getE('#log-in').value, coordinates, 'blue');
-			players.me = player;
-			grid.set(coordinates, player);
-			map.placePlayer(player, player.coordinates);
-			socket.send('PLAYERSINFO~');
+			var position = new Vector(getRandom(world.grid.width),getRandom(world.grid.height),0);
+			var player = new Player(parts[1], getE('#log-in').value, position, 'blue');
+			sendSocket('LOCATION',position.x+'|'+position.y+'|'+position.z);
+			world.addPlayer('me', player, position);
+			sendSocket('PLAYERSINFO');
 			break;
 		default:
 			// Everething that goes on with players
 			if(!isNaN(parts[0])){
 				switch(parts[1]) {
 					case 'CONNECTED':
-						players[parts[0]] = new Player(parts[0],parts[2],null,'red');
+						// this is called spectator
+						world.players[parts[0]] = new Player(parts[0],parts[2],null,'red');
 						insertTag('P', parts[2]+' joined;', chatDialog, 'message');
 						break;
 					case 'PLAYERSINFO':
-						if(!players[parts[0]]) {
-							players[parts[0]] = new Player(parts[0],parts[2],new Vector(parts[3],parts[4],parts[5]),'red');
-							var player = players[parts[0]];
-							grid.set(player.coordinates, player);
-				    		map.placePlayer(player, player.coordinates);
+						if(!world.players[parts[0]]) {
+							var player = new Player(parts[0],parts[2],new Vector(parts[3],parts[4],parts[5]),'red');
+				    		world.addPlayer(player.id, player, player.position);
 				    	}
 						break;
 				    case 'LOCATION':
-				    	var player = players[parts[0]];
-				    	var coordinates = player.coordinates;
-				    	var newCoordinates = new Vector(parts[2],parts[3],parts[4]);
-				    	if(!coordinates) {
-				    		player.coordinates = newCoordinates;
-				    		grid.set(newCoordinates, player);
-				    		map.placePlayer(player, player.coordinates);
-				    	} else {
-				    		grid.set(coordinates, null);
-				    		grid.set(newCoordinates, player);
-				    	}
+				    	var player = world.players[parts[0]];
+				    	var position = player.position;
+				    	var newPosition = new Vector(parts[2],parts[3],parts[4]);
+				    		world.setLocation(player, newPosition);
+				    	break;
+				    case 'MOVE':
+				    	world.grid.reset(player, newPosition);
 				    	break;
 				    case 'DISCONNECT':
-				    	var player = players[parts[0]];
-				    	map.removePlayer(player);
-				    	grid.set(player.coordinates, null);
-				    	delete players[parts[0]];
+				    	var player = world.players[parts[0]];
+				    	world.removePlayer(player);
 				    	break;
 					default:
 						console.log(parts);
@@ -301,12 +363,36 @@ getE('#send-message').addEventListener('click',function(){
 getE('#log-in').addEventListener('keypress', function(){
 	if(event.keyCode == 13) login()
 });
+// --> left : 37, up : 38, right : 39, down : 40;
 //reading the history, and adding option to send message on key 'ENTER'
 getE('#message-body').addEventListener('keydown', function() {
-	if(event.keyCode == 38) {
-		messageHistory.previous(getE('#message-body'));
-	} else if (event.keyCode == 40) {
-		messageHistory.next(getE('#message-body'));
-	} else if (event.keyCode == 13) 
+	if(event.keyCode == 38){
+		if(messageHistory)
+			messageHistory.previous(getE('#message-body'));
+	}
+	else if (event.keyCode == 40){
+		if(messageHistory)
+			messageHistory.next(getE('#message-body'));
+	}
+	else if (event.keyCode == 13) {
 		sendChatMessage(getE('#message-body'));;
+	}
+});
+getE('#map').addEventListener('click', function(){
+	getE('#controlls').focus();
+});
+getE('#controlls').addEventListener('keydown', function(){
+	if(event.keyCode == 38) 
+		world.players.me.actions.move('s');
+	else if (event.keyCode == 40)
+		world.players.me.actions.move('n');
+	else if (event.keyCode == 37)
+		world.players.me.actions.move('w');
+	else if (event.keyCode == 39)
+		world.players.me.actions.move('e');
+});
+getE('#controlls').addEventListener('keyup', function(){
+	var key = event.keyCode;
+	if(key == 37 || key == 38 || key == 39 || key == 40) 
+		world.players.me.actions.stop();
 });
