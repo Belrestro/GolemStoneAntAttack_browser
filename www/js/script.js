@@ -1,7 +1,7 @@
 var socket = io('http://localhost:4001');
 var chatDialog = getE('#chat-dialog');
 /* Create all important global variables*/
-var messageHistory, world, movementInterval;
+var messageHistory, world, movementInterval = {};
 /* Simpify DOM*/
 function getE(element) {
 	var selector = element.charAt(0);
@@ -124,7 +124,7 @@ var Grid = function(width,height) {
     this.width = Number(width);
     this.height = Number(height);
     this.isInside = function(vector) {
-        return vercor.x >= 0 && vector.width < this.x && vector.y >= 0 && vector.y < this.height;
+        return vector.x >= 0 && vector.x < this.width && vector.y >= 0 && vector.y < this.height;
     };
     this.get = function(vector) {
         return this.space[vector.x + (this.width * vector.y)];
@@ -132,7 +132,7 @@ var Grid = function(width,height) {
     this.set = function(vector, value) {
         this.space[vector.x + (this.width * vector.y)] = value;
     };
-    this.reset = function(value, newVector){
+    this.reset = function(newVector, value){
     	this.set(value.position, null);
     	this.set(newVector, value);
     };
@@ -244,18 +244,21 @@ var Cookies = function() {
 		document.cookie = '_';
 	};
 };
+/* Created to handle comlicated tasks*/
 var World = function(grid, map, players) {
 	this.grid = grid;
 	this.map = map;
 	this.players = players;
-	this.setInMotion = function(player, direction){
+	this.setInMotion = function(player, direction, speed, acceleration){
 		var position = player.position;
-		var newVector = directions[direction];
-		console.log(position.plus(newVector));
-		player.position = position.plus(newVector);
-		sendSocket('LOCATION',position.toString());
-		this.grid.reset(player, newVector);
-		this.map.movePlayer(player, newVector);
+		var newVector = direction;
+		if(this.grid.isInside(position.plus(newVector))) {
+			player.position = position.plus(newVector);
+			this.grid.reset(newVector, player);
+			this.map.movePlayer(player, newVector);
+		}
+		else
+			player.actions.stop(position);
 	};
 	this.addPlayer = function(id, player, position){
 		this.players[id] = player;
@@ -267,7 +270,12 @@ var World = function(grid, map, players) {
 	this.removePlayer = function(player){
 		this.map.removePlayer(player);
     	this.grid.set(player.position, null);
-    	delete players[parts[0]];
+    	delete players[player.id];
+	};
+	this.resetLocation = function(player, location){
+		player.position = location;
+		this.grid.reset(location, player);
+		this.map.movePlayer(player);
 	};
 	this.setLocation = function(player, location){
 		player.position = location;
@@ -278,18 +286,25 @@ var World = function(grid, map, players) {
 var Actions = function(performer, move, pick, fight, reviev){
 	this.performer = performer;
 	if(move) {
-		this.move = function(direction){
-			if(!movementInterval){
-				var performer = this.performer;
-				var acceleration = performer.acceleration() || 1;
-				movementInterval = setInterval(function(){	
-					world.setInMotion(performer, direction);
-				},1000 / (this.performer.speed*acceleration));
+		this.move = function(direction, speed, acceleration){
+			if(!movementInterval[this.performer.id]){
+				var player = this.performer;
+				var speed = speed || player.speed;
+				var acceleration = acceleration || player.acceleration() || 1;
+				movementInterval[player.id] = setInterval(function(){
+					world.setInMotion(player, direction, speed, acceleration);
+				},1000 / (speed*acceleration));
+				if(player == world.players.me)
+					sendSocket('MOVE',direction.toString()+'|'+speed+'|'+acceleration);
 			}
 		};
-		this.stop = function() {
-			clearInterval(movementInterval);
-			movementInterval = null;
+		this.stop = function(location) {
+			var player = this.performer;
+			clearInterval(movementInterval[player.id]);
+			movementInterval[player.id] = null;
+			world.resetLocation(player, location);
+			if(player == world.players.me)
+				sendSocket('STOP', player.position.toString());
 		};
 	}
 };
@@ -338,7 +353,16 @@ socket.on('message', function(msg){
 				    		world.setLocation(player, newPosition);
 				    	break;
 				    case 'MOVE':
-				    	world.grid.reset(player, newPosition);
+				    	var player = world.players[parts[0]];
+				    	var direction = new Vector(parts[2],parts[3],parts[4]);
+				    	var speed = parts[5];
+				    	var acceleration = parts[6];
+				    	player.actions.move(direction, speed, acceleration)
+				    	break;
+				    case 'STOP':
+				    	var player = world.players[parts[0]];
+				    	var location = new Vector(parts[2],parts[3],parts[4]);
+				    	player.actions.stop(location);
 				    	break;
 				    case 'DISCONNECT':
 				    	var player = world.players[parts[0]];
@@ -383,16 +407,18 @@ getE('#map').addEventListener('click', function(){
 });
 getE('#controlls').addEventListener('keydown', function(){
 	if(event.keyCode == 38) 
-		world.players.me.actions.move('s');
+		world.players.me.actions.move(directions['s']);
 	else if (event.keyCode == 40)
-		world.players.me.actions.move('n');
+		world.players.me.actions.move(directions['n']);
 	else if (event.keyCode == 37)
-		world.players.me.actions.move('w');
+		world.players.me.actions.move(directions['w']);
 	else if (event.keyCode == 39)
-		world.players.me.actions.move('e');
+		world.players.me.actions.move(directions['e']);
 });
 getE('#controlls').addEventListener('keyup', function(){
 	var key = event.keyCode;
-	if(key == 37 || key == 38 || key == 39 || key == 40) 
-		world.players.me.actions.stop();
+	if(key == 37 || key == 38 || key == 39 || key == 40){
+		var me = world.players.me;
+		me.actions.stop(me.position);
+	}
 });
