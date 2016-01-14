@@ -69,11 +69,13 @@ div#login-window input[type="submit"] {
 	display: inline-block;
 	box-shadow: 0 0 1px;
 	border-radius: 50%;
+	text-align: center;
 	transition:.3s;
 }
 #map .player:before, #map .player:after {
 	display: inline-block;
 	position: absolute;
+	font-size:75%;
 }
 #map__sandbox {
 	position: relative;

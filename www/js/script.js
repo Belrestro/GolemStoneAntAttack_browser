@@ -89,7 +89,7 @@ var Player = function(id, nickname, position, color) {
 	this.nickname = nickname;
 	this.position = position;
 	// points per second
-	this.speed = 5;
+	this.speed = 10;
 	this.actions = new Actions(this, 'move');
 	// movement = 1s/(speed * acceleration)
 	this.acceleration = function() {
@@ -126,40 +126,26 @@ var Grid = function(width,height) {
     this.isInside = function(vector) {
         return vector.x >= 0 && vector.x < this.width && vector.y >= 0 && vector.y < this.height;
     };
+    this.isInRange = function(object, coordinates, range){
+    	var x = coordinates.x >= 0 ? coordinates.x + -(range) : coordinates.x -(range);
+    	var y = coordinates.y >= 0 ? coordinates.y + -(range) : coordinates.y -(range);
+		for(;x<(coordinates.x+range+1);x++)
+			for(var ordinate = y;ordinate<(coordinates.y+range+1);ordinate++) 
+				if(this.space[x+(this.width*ordinate)] == object)
+					return true;
+		return false;
+    };
     this.get = function(vector) {
         return this.space[vector.x + (this.width * vector.y)];
     };
     this.set = function(vector, value) {
         this.space[vector.x + (this.width * vector.y)] = value;
     };
-    this.reset = function(newVector, value){
-    	this.set(value.position, null);
-    	this.set(newVector, value);
+    this.reset = function(vector, player){
+    	var position = player.position;
+    	delete this.space[position.x + (this.width * position.y)];
+    	this.set(vector, player);
     };
-};
-var MessageHistory = function() {
-	this.pos = -1;
-	this.array = [];
-	this.limit = 10;
-	this.previous = function(input) {
-		if(this.pos < this.array.length-1)
-			this.pos++;
-		input.value = this.array[this.pos];
-	};
-	this.next = function(input) {
-		if(this.pos >-1)
-			this.pos--;
-		if(this.pos != -1)
-			input.value = this.array[this.pos];
-		else 
-			input.value = '';
-	};
-	this.add = function(input) {
-		this.array.unshift(input.value);
-		this.pos = -1;
-		//only last 10 counts
-		if (this.array.length > this.limit) this.array.pop();
-	};
 };
 /* Landscape & Legend are on development*/
 var Map = function(grid, players, tagId, scale, landscape, legend) {
@@ -186,10 +172,12 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 		var styles = 'background-color:'+player.color+';';
 		styles += 'left:'+(vector.x*this.scale)+'px;';
 		styles += 'top:'+(vector.y*this.scale)+'px;';
-		insertTag('SPAN', null, getE('#'+this.tagId), 'player '+player.id, styles);
+		insertTag('SPAN', null, getE('#'+this.tagId), 'player p'+player.id, styles);
+		//add player name
+		document.styleSheets[0].insertRule('.player.p'+player.id+':before{content:"'+player.nickname+'";}',0);
 	};
 	this.movePlayer = function(player) {
-		var playerTag = getE('.player '+player.id)[0];
+		var playerTag = getE('.player p'+player.id)[0];
 		var style = playerTag.style;
 		var pos = player.position;
 		style.left = ((pos.x)*this.scale)+'px';
@@ -197,6 +185,90 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 	};
 	this.removePlayer = function(player){
 		getE('#'+this.tagId).removeChild(getE('.player '+player.id)[0]);
+	};
+};
+/* Created to handle comlicated tasks*/
+var World = function(grid, map, players) {
+	this.grid = grid;
+	this.map = map;
+	this.players = players;
+	this.addPlayer = function(id, player, position){
+		this.players[id] = player;
+		if(position) {
+			this.grid.set(position, player);
+			this.map.placePlayer(player, player.position);
+		}
+	};
+	this.removePlayer = function(player){
+		this.map.removePlayer(player);
+    	delete this.grid.space[player.position.x+(this.grid.width*player.position.y)];
+    	delete players[player.id];
+	};
+	this.setLocation = function(player, location){
+		player.position = location;
+		this.grid.set(location, player);
+		this.map.placePlayer(player, player.position);
+	};
+	this.resetLocation = function(player, location){
+		this.grid.reset(location, player);
+		player.position = location;
+		this.map.movePlayer(player);
+	};
+	this.setInMotion = function(player, direction){
+		if(this.grid.isInside(player.position.plus(direction))) {
+			this.resetLocation(player, player.position.plus(direction));
+		}
+		else
+			player.actions.stop(player.position);
+	};
+};
+var Actions = function(performer, move, pick, fight, reviev){
+	this.performer = performer;
+	if(move) {
+		this.move = function(direction, sSpeed, sAcceleration){
+			if(!movementInterval[this.performer.id]){
+				var player = this.performer;
+				var speed = sSpeed || player.speed;
+				var acceleration = sAcceleration || player.acceleration() || 1;
+				movementInterval[player.id] = setInterval(function(){
+					world.setInMotion(player, direction);
+				},1000 / (speed*acceleration));
+				if(player == world.players.me)
+					sendSocket('MOVE',direction.toString()+'|'+speed+'|'+acceleration);
+			}
+		};
+		this.stop = function(location) {
+			var player = this.performer;
+			clearInterval(movementInterval[player.id]);
+			movementInterval[player.id] = null;
+			world.resetLocation(player, location);
+			if(player == world.players.me)
+				sendSocket('STOP', player.position.toString());
+		};
+	}
+};
+var MessageHistory = function() {
+	this.pos = -1;
+	this.array = [];
+	this.limit = 10;
+	this.previous = function(input) {
+		if(this.pos < this.array.length-1)
+			this.pos++;
+		input.value = this.array[this.pos];
+	};
+	this.next = function(input) {
+		if(this.pos >-1)
+			this.pos--;
+		if(this.pos != -1)
+			input.value = this.array[this.pos];
+		else 
+			input.value = '';
+	};
+	this.add = function(input) {
+		this.array.unshift(input.value);
+		this.pos = -1;
+		//only last 10 counts
+		if (this.array.length > this.limit) this.array.pop();
 	};
 };
 /* To safe some features and be more Player frendly*/
@@ -244,70 +316,6 @@ var Cookies = function() {
 		document.cookie = '_';
 	};
 };
-/* Created to handle comlicated tasks*/
-var World = function(grid, map, players) {
-	this.grid = grid;
-	this.map = map;
-	this.players = players;
-	this.setInMotion = function(player, direction, speed, acceleration){
-		var position = player.position;
-		var newVector = direction;
-		if(this.grid.isInside(position.plus(newVector))) {
-			player.position = position.plus(newVector);
-			this.grid.reset(newVector, player);
-			this.map.movePlayer(player, newVector);
-		}
-		else
-			player.actions.stop(position);
-	};
-	this.addPlayer = function(id, player, position){
-		this.players[id] = player;
-		if(position) {
-			this.grid.set(position, player);
-			this.map.placePlayer(player, player.position);
-		}
-	};
-	this.removePlayer = function(player){
-		this.map.removePlayer(player);
-    	this.grid.set(player.position, null);
-    	delete players[player.id];
-	};
-	this.resetLocation = function(player, location){
-		player.position = location;
-		this.grid.reset(location, player);
-		this.map.movePlayer(player);
-	};
-	this.setLocation = function(player, location){
-		player.position = location;
-		this.grid.set(location, player);
-		this.map.placePlayer(player, player.position);
-	};
-};
-var Actions = function(performer, move, pick, fight, reviev){
-	this.performer = performer;
-	if(move) {
-		this.move = function(direction, speed, acceleration){
-			if(!movementInterval[this.performer.id]){
-				var player = this.performer;
-				var speed = speed || player.speed;
-				var acceleration = acceleration || player.acceleration() || 1;
-				movementInterval[player.id] = setInterval(function(){
-					world.setInMotion(player, direction, speed, acceleration);
-				},1000 / (speed*acceleration));
-				if(player == world.players.me)
-					sendSocket('MOVE',direction.toString()+'|'+speed+'|'+acceleration);
-			}
-		};
-		this.stop = function(location) {
-			var player = this.performer;
-			clearInterval(movementInterval[player.id]);
-			movementInterval[player.id] = null;
-			world.resetLocation(player, location);
-			if(player == world.players.me)
-				sendSocket('STOP', player.position.toString());
-		};
-	}
-};
 /* --- Connection actions --- */
 socket.on('connect', function() {
 	login('start');
@@ -327,7 +335,7 @@ socket.on('message', function(msg){
 		case 'CONNECTED':
 			var position = new Vector(getRandom(world.grid.width),getRandom(world.grid.height),0);
 			var player = new Player(parts[1], getE('#log-in').value, position, 'blue');
-			sendSocket('LOCATION',position.x+'|'+position.y+'|'+position.z);
+			sendSocket('LOCATION',position.toString());
 			world.addPlayer('me', player, position);
 			sendSocket('PLAYERSINFO');
 			break;
@@ -406,14 +414,10 @@ getE('#map').addEventListener('click', function(){
 	getE('#controlls').focus();
 });
 getE('#controlls').addEventListener('keydown', function(){
-	if(event.keyCode == 38) 
-		world.players.me.actions.move(directions['s']);
-	else if (event.keyCode == 40)
-		world.players.me.actions.move(directions['n']);
-	else if (event.keyCode == 37)
-		world.players.me.actions.move(directions['w']);
-	else if (event.keyCode == 39)
-		world.players.me.actions.move(directions['e']);
+	var matches = {38:'s', 40:'n',37:'w',39:'e'};
+	var button = event.keyCode;
+	if(button in matches)
+		world.players.me.actions.move(directions[matches[button]]);
 });
 getE('#controlls').addEventListener('keyup', function(){
 	var key = event.keyCode;
