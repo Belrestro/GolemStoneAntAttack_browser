@@ -88,6 +88,7 @@ var Player = function(id, nickname, position, color) {
 	this.id = id;
 	this.nickname = nickname;
 	this.position = position;
+	this.rotationDirection = 's';
 	// points per second
 	this.speed = 10;
 	this.actions = new Actions(this, 'move');
@@ -173,8 +174,13 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 		styles += 'left:'+(vector.x*this.scale)+'px;';
 		styles += 'top:'+(vector.y*this.scale)+'px;';
 		insertTag('SPAN', null, getE('#'+this.tagId), 'player p'+player.id, styles);
-		//add player name
-		document.styleSheets[0].insertRule('.player.p'+player.id+':before{content:"'+player.nickname+'";}',0);
+		// add diretion arrow
+		insertTag('SPAN','^',getE('.player p'+player.id)[0], 'rotation-arrow js-ra-'+player.id);
+		//add player name, looks ugly now...
+		insertTag('SPAN',player.nickname,getE('.player p'+player.id)[0], 'player-nickname js-n-n'+player.id);
+		var nickname = getE('.js-n-n'+player.id)[0];
+		var playerTag = getE('.player p'+player.id)[0];
+		nickname.style.left = -((nickname.offsetWidth/2)-(playerTag.offsetWidth/2))+'px';
 	};
 	this.movePlayer = function(player) {
 		var playerTag = getE('.player p'+player.id)[0];
@@ -182,9 +188,16 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 		var pos = player.position;
 		style.left = ((pos.x)*this.scale)+'px';
 		style.top = ((pos.y)*this.scale)+'px';
+		var directionArrow = {'s':{top:-150,left:0,rotate:0}, 'e':{top:-60,left:102,rotate:90},'n':{top:50,left:0,rotate:180},'w':{top:-60,left:-102,rotate:270}};
+		var arrow = getE('.js-ra-'+player.id)[0];
+		style = arrow.style;
+		var rotationDirection = directionArrow[player.rotationDirection];
+		style.top = rotationDirection.top+'%';
+		style.left = rotationDirection.left+'%';
+		style.transform = 'rotate('+rotationDirection.rotate+'deg)';
 	};
 	this.removePlayer = function(player){
-		getE('#'+this.tagId).removeChild(getE('.player '+player.id)[0]);
+		getE('#'+this.tagId).removeChild(getE('.player p'+player.id)[0]);
 	};
 };
 /* Created to handle comlicated tasks*/
@@ -230,6 +243,10 @@ var Actions = function(performer, move, pick, fight, reviev){
 				var player = this.performer;
 				var speed = sSpeed || player.speed;
 				var acceleration = sAcceleration || player.acceleration() || 1;
+				for(var dir in directions)
+					if(directions.hasOwnProperty(dir))
+						if(directions[dir].x == direction.x && directions[dir].y == direction.y && directions[dir].z == direction.z)
+							player.rotationDirection = dir;;
 				movementInterval[player.id] = setInterval(function(){
 					world.setInMotion(player, direction);
 				},1000 / (speed*acceleration));

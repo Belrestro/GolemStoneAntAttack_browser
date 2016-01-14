@@ -77,6 +77,21 @@ div#login-window input[type="submit"] {
 	position: absolute;
 	font-size:75%;
 }
+#map .player .rotation-arrow {
+	content:"^";
+	position: absolute;
+	left:0;
+	top:-10px;
+	font-family: helvetica;
+	font-size:75%;
+	transform:rotate(0deg);
+	transition:.2s;
+}
+#map .player .player-nickname {
+	font-size: 70%;
+    position: absolute;
+    top: -350%;
+}
 #map__sandbox {
 	position: relative;
 	margin:0 auto;
