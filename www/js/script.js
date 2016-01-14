@@ -34,7 +34,7 @@ function login(arg) {
 		var x = setTimeout(function(){getE("#login").style.display = 'none';getE('#chat-inputs').style.opacity=1;},1100);
 		//Set user for chat
 		insertTag('P','Hi '+getE('#log-in').value+'!', chatDialog, "message");
-		getE('#message-body').focus();
+		getE('#controlls').focus();
 	} else {
 		//Visualize 
 		getE("#login").style.opacity = 1;
@@ -127,13 +127,15 @@ var Grid = function(width,height) {
     this.isInside = function(vector) {
         return vector.x >= 0 && vector.x < this.width && vector.y >= 0 && vector.y < this.height;
     };
-    this.isInRange = function(object, coordinates, range){
-    	var x = coordinates.x >= 0 ? coordinates.x + -(range) : coordinates.x -(range);
-    	var y = coordinates.y >= 0 ? coordinates.y + -(range) : coordinates.y -(range);
+    this.isInRange = function(condition, coordinates, range){
+    	var x = coordinates.x + -(range);
+    	var y = coordinates.y + -(range);
+    	var self = coordinates.x+coordinates.y;
 		for(;x<(coordinates.x+range+1);x++)
-			for(var ordinate = y;ordinate<(coordinates.y+range+1);ordinate++) 
-				if(this.space[x+(this.width*ordinate)] == object)
+			for(var ordinate = y;ordinate<(coordinates.y+range+1);ordinate++) {
+				if(condition(this.space[x+(this.width*ordinate)]) && x+ordinate != self)
 					return true;
+			}
 		return false;
     };
     this.get = function(vector) {
@@ -194,6 +196,8 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 		var rotationDirection = directionArrow[player.rotationDirection];
 		style.top = rotationDirection.top+'%';
 		style.left = rotationDirection.left+'%';
+		if(!Boolean(style.opacity))
+			style.opacity = 1;
 		style.transform = 'rotate('+rotationDirection.rotate+'deg)';
 	};
 	this.removePlayer = function(player){
@@ -228,7 +232,13 @@ var World = function(grid, map, players) {
 		this.map.movePlayer(player);
 	};
 	this.setInMotion = function(player, direction){
-		if(this.grid.isInside(player.position.plus(direction))) {
+		var grid = this.grid;
+		if(grid.isInside(player.position.plus(direction)) && !grid.isInRange(function(object){
+			// Boy that is one hack of a condition
+			var vector = directions[player.rotationDirection];
+			var possiblePlayer = player.position.plus(vector);
+			return object instanceof Player && grid.get(possiblePlayer) instanceof Player;
+		},player.position,1)) {
 			this.resetLocation(player, player.position.plus(direction));
 		}
 		else

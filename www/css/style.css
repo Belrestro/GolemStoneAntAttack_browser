@@ -81,7 +81,8 @@ div#login-window input[type="submit"] {
 	content:"^";
 	position: absolute;
 	left:0;
-	top:-10px;
+	top:0;
+	opacity: 0;
 	font-family: helvetica;
 	font-size:75%;
 	transform:rotate(0deg);
