@@ -90,13 +90,30 @@ var Player = function(id, nickname, position, color) {
 	this.position = position;
 	this.rotationDirection = 's';
 	// points per second
-	this.speed = 10;
-	this.actions = new Actions(this, 'move');
+	this.speed = 6;
+	this.actions = new Actions(this, ['MOVE','PICK']);
 	// movement = 1s/(speed * acceleration)
-	this.acceleration = function() {
-
+	this.acceleration = {
+		start:1,max:2,step:0.5
 	};
 	this.color = color;
+};
+var isPlayer = function(something){
+	return something instanceof Player;
+};
+var Item = function(){
+};
+var Rock = function(id, position, mass){
+	this.type = "rock";
+	this.id = id;
+	this.mass = mass;
+	this.position = position;
+	this.speed = 5;
+	this.acceleration = {
+		start:40,max:0,step:-4
+	};
+	this.actions = new Actions(this, ['MOVE']);
+	this.effects = {demage:5};
 };
 var Vector = function(x,y,z) {
 	this.x = Number(x);
@@ -111,6 +128,9 @@ var Vector = function(x,y,z) {
 	this.toString = function() {
 		return this.x+"|"+this.y+"|"+this.z;
 	};
+	this.sameAs = function(vector){
+		return this.x == vector.x && this.y == vector.y && this.z == vector.z;
+	}
 };
 var directions = {
 	"n": new Vector(0,1,0),
@@ -138,6 +158,9 @@ var Grid = function(width,height) {
 			}
 		return false;
     };
+    this.isInDirection = function() {
+
+    };
     this.get = function(vector) {
         return this.space[vector.x + (this.width * vector.y)];
     };
@@ -149,6 +172,15 @@ var Grid = function(width,height) {
     	delete this.space[position.x + (this.width * position.y)];
     	this.set(vector, player);
     };
+    this.getRandomLocation = function(range){
+			var location = new Vector(getRandom(this.width),getRandom(this.height),0);
+			function isNothing(something){
+				return something == null;
+			}
+			while(!(this.get(location)==null) && !(this.isInRange(isNothing,location,range)))
+				location = new Vector(getRandom(this.width),getRandom(this.height),0);
+			return location;
+	};
 };
 /* Landscape & Legend are on development*/
 var Map = function(grid, players, tagId, scale, landscape, legend) {
@@ -165,7 +197,9 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 		if(!getE('style')[1])
 			insertTag('STYLE',null,getE('head')[0]);
 		var rules = [];
+		// map size
 		rules.push('#'+this.tagId+'{width:'+(this.grid.width*scale)+'px;height:'+(this.grid.height*scale)+'px;}');
+		// players fize
 		rules.push('.player {width:'+(1*scale)+'px;height:'+(1*scale)+'px;}');
 		rules.forEach(function(rule){
 			document.styleSheets[1].insertRule(rule, 0);
@@ -203,12 +237,28 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 	this.removePlayer = function(player){
 		getE('#'+this.tagId).removeChild(getE('.player p'+player.id)[0]);
 	};
+	this.placeItem = function(item, vector){
+		var tag = getE('#'+this.tagId);
+		var styles = "";
+		styles += 'left:'+(vector.x*this.scale)+'px;';
+		styles += 'top:'+(vector.y*this.scale)+'px;';
+		styles += 'background-color:grey;';
+		insertTag('SPAN', null, tag, 'item '+item.type+' i-'+item.id, styles);
+	};
+	this.moveItem = function(item) {
+		var itemTag = getE('.i-'+item.id)[0];
+		var style = itemTag.style;
+		var pos = item.position;
+		style.left = ((pos.x)*this.scale)+'px';
+		style.top = ((pos.y)*this.scale)+'px';
+	};
 };
 /* Created to handle comlicated tasks*/
-var World = function(grid, map, players) {
+var World = function(grid, map, players, items) {
 	this.grid = grid;
 	this.map = map;
 	this.players = players;
+	this.items = items;
 	this.addPlayer = function(id, player, position){
 		this.players[id] = player;
 		if(position) {
@@ -229,48 +279,92 @@ var World = function(grid, map, players) {
 	this.resetLocation = function(player, location){
 		this.grid.reset(location, player);
 		player.position = location;
-		this.map.movePlayer(player);
+		if(isPlayer(player))
+			this.map.movePlayer(player);
+		else
+			this.map.moveItem(player);
 	};
 	this.setInMotion = function(player, direction){
 		var grid = this.grid;
-		if(grid.isInside(player.position.plus(direction)) && !grid.isInRange(function(object){
-			// Boy that is one hack of a condition
+		function playerInTheWay(object){
 			var vector = directions[player.rotationDirection];
 			var possiblePlayer = player.position.plus(vector);
-			return object instanceof Player && grid.get(possiblePlayer) instanceof Player;
-		},player.position,1)) {
-			this.resetLocation(player, player.position.plus(direction));
+			return isPlayer(object) &&  isPlayer(grid.get(possiblePlayer));
 		}
-		else
-			player.actions.stop(player.position);
+		if(isPlayer(player)){
+			if(grid.isInside(player.position.plus(direction)) && !grid.isInRange(playerInTheWay,player.position,1))
+				this.resetLocation(player, player.position.plus(direction));
+			else
+				player.actions.stop(player.position);
+		} else {
+			if(grid.isInside(player.position.plus(direction)))
+				this.resetLocation(player, player.position.plus(direction));
+			else
+				player.actions.stop(player.position);
+		}
+	};
+	this.addItem = function(item, position) {
+		var location = position || this.grid.getRandomLocation(2);
+		item.position = location;
+		this.items[item.id] = item;
+		this.grid.set(location, item);
+		console.log(item);
+		console.log(location);
+		this.map.placeItem(item, location);
 	};
 };
-var Actions = function(performer, move, pick, fight, reviev){
+var Actions = function(performer, options){
 	this.performer = performer;
-	if(move) {
+	var isInOptions = function(argument){
+		return options.some(function(option){
+			return option == argument;
+		});
+	};
+	if(isInOptions('MOVE')) {
 		this.move = function(direction, sSpeed, sAcceleration){
 			if(!movementInterval[this.performer.id]){
 				var player = this.performer;
 				var speed = sSpeed || player.speed;
-				var acceleration = sAcceleration || player.acceleration() || 1;
+				var acceleration = sAcceleration || player.acceleration.start || 1;
 				for(var dir in directions)
 					if(directions.hasOwnProperty(dir))
-						if(directions[dir].x == direction.x && directions[dir].y == direction.y && directions[dir].z == direction.z)
-							player.rotationDirection = dir;;
-				movementInterval[player.id] = setInterval(function(){
-					world.setInMotion(player, direction);
-				},1000 / (speed*acceleration));
+						if(directions[dir].sameAs(direction))
+							player.rotationDirection = dir;
 				if(player == world.players.me)
 					sendSocket('MOVE',direction.toString()+'|'+speed+'|'+acceleration);
+				function setDynamicSpeed(boost){
+					// to stop if there is no speed
+					if(boost <= 0 || speed <= 0) {
+						player.actions.stop(player.position);
+						// player button event prevention
+						if(!(player instanceof Rock))
+							movementInterval[player.id] = true;
+						return;
+					}
+					var max = player.acceleration.max;
+					var step = player.acceleration.step;
+					var newBoost =boost+step;
+					if(max > 0 ? boost > max : boost < max) 
+						boost = max;
+					world.setInMotion(player, direction);
+					movementInterval[performer.id] = setTimeout(function(){
+						setDynamicSpeed(Number(newBoost.toFixed(4)));
+					},1000 / (speed*boost));
+				}
+				setDynamicSpeed(acceleration);
 			}
 		};
 		this.stop = function(location) {
 			var player = this.performer;
-			clearInterval(movementInterval[player.id]);
+			clearTimeout(movementInterval[player.id]);
 			movementInterval[player.id] = null;
 			world.resetLocation(player, location);
 			if(player == world.players.me)
 				sendSocket('STOP', player.position.toString());
+		}
+	} if(isInOptions('PICK')) {
+		this.pick = function(object){
+
 		};
 	}
 };
@@ -346,7 +440,7 @@ var Cookies = function() {
 /* --- Connection actions --- */
 socket.on('connect', function() {
 	login('start');
-	world = new World(null, null, {});
+	world = new World(null, null, {}, {});
 	sendSocket('GRID');
 });
 /* Sort incoming messages*/
@@ -358,9 +452,11 @@ socket.on('message', function(msg){
 			world.grid = new Grid(Number(parts[1]),Number(parts[2]));
 			world.map = new Map(world.grid, world.players,'map__sandbox',6/1);
 			world.map.adjustScale();
+			// simply add an item 
+			world.addItem(new Rock(0));
 			break;
 		case 'CONNECTED':
-			var position = new Vector(getRandom(world.grid.width),getRandom(world.grid.height),0);
+			var position = world.grid.getRandomLocation(2);
 			var player = new Player(parts[1], getE('#log-in').value, position, 'blue');
 			sendSocket('LOCATION',position.toString());
 			world.addPlayer('me', player, position);
@@ -414,7 +510,7 @@ socket.on('message', function(msg){
 			break;
 	}
 });
-/* --- Setting all requires listeners --- */
+/* --- Setting all required listeners --- */
 getE('#send-message').addEventListener('click',function(){ 
 	sendChatMessage(getE('#message-body'));
 });

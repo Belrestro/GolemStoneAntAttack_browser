@@ -70,7 +70,7 @@ div#login-window input[type="submit"] {
 	box-shadow: 0 0 1px;
 	border-radius: 50%;
 	text-align: center;
-	transition:.3s;
+	transition:.1s;
 }
 #map .player:before, #map .player:after {
 	display: inline-block;
@@ -86,12 +86,20 @@ div#login-window input[type="submit"] {
 	font-family: helvetica;
 	font-size:75%;
 	transform:rotate(0deg);
-	transition:.2s;
+	transition:.1s;
 }
 #map .player .player-nickname {
 	font-size: 70%;
     position: absolute;
     top: -350%;
+}
+#map .rock {
+	width:3px;
+	height:3px;
+	display: inline-block;
+	position: absolute;
+	border-radius: 50%;
+	box-shadow: 0 0 1px black;
 }
 #map__sandbox {
 	position: relative;
