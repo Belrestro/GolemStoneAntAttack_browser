@@ -1,3 +1,5 @@
+'use strict';
+
 var socket = io('http://localhost:4001');
 var chatDialog = getE('#chat-dialog');
 /* Create all important global variables*/
@@ -82,27 +84,34 @@ function sendChatMessage(input) {
 	input.value = "";
 	scrollDialog('bottom');
 }
+var isPlayer = function(something){
+	return something instanceof Player;
+};
+var isObject = function(something){
+	return something instanceof Object;
+};
+var demageTo = function(player, demage){
+	player.hp -= demage;
+	if(player.hp<=0)
+		player.alive = false;
+};
 /* --- Createing constructors --- */
 /* For now color argument represents identification of current player or affiliation to team, team object will be created later*/
 var Player = function(id, nickname, position, color) {
 	this.id = id;
+	this.hp = 25;
+	this.alive = true;
 	this.nickname = nickname;
 	this.position = position;
 	this.rotationDirection = 's';
 	// points per second
-	this.speed = 6;
+	this.speed = 8;
 	this.actions = new Actions(this, ['MOVE','PICK']);
 	// movement = 1s/(speed * acceleration)
 	this.acceleration = {
 		start:1,max:2,step:0.5
 	};
 	this.color = color;
-};
-var isPlayer = function(something){
-	return something instanceof Player;
-};
-var isObject = function(something){
-	return something instanceof Object;
 };
 var Item = function(){
 };
@@ -117,7 +126,7 @@ var Rock = function(id, position, mass){
 		start:40,max:0,step:-4
 	};
 	this.actions = new Actions(this, ['MOVE']);
-	this.effects = {demage:5};
+	this.demage = 10;
 };
 var Vector = function(x,y,z) {
 	this.x = Number(x);
@@ -315,13 +324,19 @@ var World = function(grid, map, players, items) {
 					this.map.moveItem(player.heldItem);
 				}
 			}
-			else
+			else{
 				player.actions.stop(player.position);
+			}
 		} else {
-			if(grid.isInside(player.position.plus(direction)) && !isObject(possiblePlayer))
+			if(grid.isInside(player.position.plus(direction)) && !isObject(possiblePlayer)){
 				this.resetLocation(player, player.position.plus(direction));
-			else
+			}
+			else{
 				player.actions.stop(player.position);
+				if(isPlayer(possiblePlayer)){
+					demageTo(possiblePlayer, player.demage);
+				}
+			}
 		}
 	};
 	this.addItem = function(item, position) {
@@ -343,9 +358,12 @@ var Actions = function(performer, options){
 		});
 	};
 	if(isInOptions('MOVE')) {
+		// It's appear that if you want to stop setTimeout you should have a trigger whether it is active, in order to prevent new Timeout that has been alredy started 
+		if(!movementInterval[this.performer.id])
+			movementInterval[this.performer.id] = {};
 		this.move = function(direction, sSpeed, sAcceleration){
 			// direction is Vector instance
-			if(!movementInterval[this.performer.id]){
+			if(!movementInterval[this.performer.id].active){
 				var player = this.performer;
 				var speed = sSpeed || player.speed;
 				var acceleration = sAcceleration || player.acceleration.start || 1;
@@ -355,13 +373,14 @@ var Actions = function(performer, options){
 							player.rotationDirection = dir;
 				if(player == world.players.me)
 					sendSocket('MOVE',direction.toString()+'|'+speed+'|'+acceleration);
+				movementInterval[player.id].active = true;
 				function setDynamicSpeed(boost){
 					// to stop if there is no speed
 					if(boost <= 0 || speed <= 0) {
 						player.actions.stop(player.position);
 						// player button event prevention
-						if(!(player instanceof Rock))
-							movementInterval[player.id] = true;
+						if(isPlayer(player))
+							movementInterval[player.id].active = false;
 						return;
 					}
 					var max = player.acceleration.max;
@@ -370,8 +389,9 @@ var Actions = function(performer, options){
 					if(max > 0 ? boost > max : boost < max) 
 						boost = max;
 					world.setInMotion(player, direction);
-					movementInterval[performer.id] = setTimeout(function(){
-						setDynamicSpeed(Number(newBoost.toFixed(4)));
+					movementInterval[player.id].interval = setTimeout(function(){
+						if(movementInterval[player.id].active)
+							setDynamicSpeed(Number(newBoost.toFixed(4)));
 					},1000 / (speed*boost));
 				}
 				setDynamicSpeed(acceleration);
@@ -379,8 +399,10 @@ var Actions = function(performer, options){
 		};
 		this.stop = function(location) {
 			var player = this.performer;
-			clearTimeout(movementInterval[player.id]);
-			movementInterval[player.id] = null;
+			var intervals = movementInterval[player.id];
+			clearTimeout(intervals.interval);
+			intervals.interval = null;
+			intervals.active = false;
 			world.resetLocation(player, location);
 			if(player == world.players.me)
 				sendSocket('STOP', player.position.toString());
@@ -412,7 +434,7 @@ var Actions = function(performer, options){
 			var player = this.performer;
 			var direction = directions[player.rotationDirection]
 			var location = player.position.plus(direction);
-			if(grid.isInside(location)){
+			if(grid.isInside(location) && !isPlayer(grid.get(location))){
 				player.heldItem.position = location;
 				grid.set(location, player.heldItem);
 				player.heldItem = null;
@@ -506,7 +528,7 @@ socket.on('message', function(msg){
 			world.map = new Map(world.grid, world.players,'map__sandbox',6/1);
 			world.map.adjustScale();
 			// simply add an item 
-			world.addItem(new Rock(0));
+			world.addItem(new Rock('rock'));
 			break;
 		case 'CONNECTED':
 			var position = world.grid.getRandomLocation(2);
@@ -568,7 +590,7 @@ getE('#send-message').addEventListener('click',function(){
 	sendChatMessage(getE('#message-body'));
 });
 //siply adding an option to login with 'ENTER'
-getE('#log-in').addEventListener('keypress', function(){
+getE('#log-in').addEventListener('keypress', function(event){
 	if(event.keyCode == 13) login()
 });
 // --> left : 37, up : 38, right : 39, down : 40;
@@ -589,7 +611,7 @@ getE('#message-body').addEventListener('keydown', function() {
 getE('#map').addEventListener('click', function(){
 	getE('#controlls').focus();
 });
-getE('#controlls').addEventListener('keydown', function(){
+getE('#controlls').addEventListener('keydown', function(event){
 	var me = world.players.me;
 	var movement = {38:'s', 40:'n',37:'w',39:'e'};
 	var button = event.keyCode;
