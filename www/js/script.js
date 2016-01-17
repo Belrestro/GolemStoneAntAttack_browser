@@ -101,6 +101,9 @@ var Player = function(id, nickname, position, color) {
 var isPlayer = function(something){
 	return something instanceof Player;
 };
+var isObject = function(something){
+	return something instanceof Object;
+};
 var Item = function(){
 };
 var Rock = function(id, position, mass){
@@ -108,6 +111,7 @@ var Rock = function(id, position, mass){
 	this.id = id;
 	this.mass = mass;
 	this.position = position;
+	this.pickable = true;
 	this.speed = 5;
 	this.acceleration = {
 		start:40,max:0,step:-4
@@ -144,6 +148,20 @@ var Grid = function(width,height) {
     this.space = new Array(width * height);
     this.width = Number(width);
     this.height = Number(height);
+    this.get = function(vector) {
+        return this.space[vector.x + (this.width * vector.y)];
+    };
+    this.set = function(vector, value) {
+        this.space[vector.x + (this.width * vector.y)] = value;
+    };
+    this.remove = function(vector){
+    	delete this.space[vector.x + (this.width * vector.y)];
+    };
+    this.reset = function(vector, player){
+    	var position = player.position;
+    	this.remove(position);
+    	this.set(vector, player);
+    };
     this.isInside = function(vector) {
         return vector.x >= 0 && vector.x < this.width && vector.y >= 0 && vector.y < this.height;
     };
@@ -152,25 +170,26 @@ var Grid = function(width,height) {
     	var y = coordinates.y + -(range);
     	var self = coordinates.x+coordinates.y;
 		for(;x<(coordinates.x+range+1);x++)
-			for(var ordinate = y;ordinate<(coordinates.y+range+1);ordinate++) {
+			for(var ordinate = y;ordinate<(coordinates.y+range+1);ordinate++) 
 				if(condition(this.space[x+(this.width*ordinate)]) && x+ordinate != self)
 					return true;
-			}
 		return false;
     };
-    this.isInDirection = function() {
-
+    this.getInRange = function(coordinates, range) {
+    	var x = coordinates.x + -(range);
+    	var y = coordinates.y + -(range);
+    	var self = coordinates.x+coordinates.y;
+    	var objects = [];
+    	for(;x<(coordinates.x+range+1);x++)
+			for(var ordinate = y;ordinate<(coordinates.y+range+1);ordinate++)
+				if(this.space[x+(this.width*ordinate)] != null && x+ordinate != self){
+					objects.push(this.space[x+(this.width*ordinate)]);
+				}
+		return objects;
     };
-    this.get = function(vector) {
-        return this.space[vector.x + (this.width * vector.y)];
-    };
-    this.set = function(vector, value) {
-        this.space[vector.x + (this.width * vector.y)] = value;
-    };
-    this.reset = function(vector, player){
-    	var position = player.position;
-    	delete this.space[position.x + (this.width * position.y)];
-    	this.set(vector, player);
+    this.inDirection = function(coordinates, direction) {
+    	var direction = typeof direction == "string" ? directions[direction] : direction;
+    	return this.get(coordinates.plus(direction));
     };
     this.getRandomLocation = function(range){
 			var location = new Vector(getRandom(this.width),getRandom(this.height),0);
@@ -181,6 +200,7 @@ var Grid = function(width,height) {
 				location = new Vector(getRandom(this.width),getRandom(this.height),0);
 			return location;
 	};
+   
 };
 /* Landscape & Legend are on development*/
 var Map = function(grid, players, tagId, scale, landscape, legend) {
@@ -242,7 +262,7 @@ var Map = function(grid, players, tagId, scale, landscape, legend) {
 		var styles = "";
 		styles += 'left:'+(vector.x*this.scale)+'px;';
 		styles += 'top:'+(vector.y*this.scale)+'px;';
-		styles += 'background-color:grey;';
+		styles += 'background-color:black;';
 		insertTag('SPAN', null, tag, 'item '+item.type+' i-'+item.id, styles);
 	};
 	this.moveItem = function(item) {
@@ -268,7 +288,7 @@ var World = function(grid, map, players, items) {
 	};
 	this.removePlayer = function(player){
 		this.map.removePlayer(player);
-    	delete this.grid.space[player.position.x+(this.grid.width*player.position.y)];
+    	this.grid.remove(player.position);
     	delete players[player.id];
 	};
 	this.setLocation = function(player, location){
@@ -286,18 +306,19 @@ var World = function(grid, map, players, items) {
 	};
 	this.setInMotion = function(player, direction){
 		var grid = this.grid;
-		function playerInTheWay(object){
-			var vector = directions[player.rotationDirection];
-			var possiblePlayer = player.position.plus(vector);
-			return isPlayer(object) &&  isPlayer(grid.get(possiblePlayer));
-		}
+		var possiblePlayer = grid.inDirection(player.position, player.rotationDirection);
 		if(isPlayer(player)){
-			if(grid.isInside(player.position.plus(direction)) && !grid.isInRange(playerInTheWay,player.position,1))
+			if(grid.isInside(player.position.plus(direction)) && !isObject(possiblePlayer)){
 				this.resetLocation(player, player.position.plus(direction));
+				if(player.heldItem){
+					player.heldItem.position = player.position;
+					this.map.moveItem(player.heldItem);
+				}
+			}
 			else
 				player.actions.stop(player.position);
 		} else {
-			if(grid.isInside(player.position.plus(direction)))
+			if(grid.isInside(player.position.plus(direction)) && !isObject(possiblePlayer))
 				this.resetLocation(player, player.position.plus(direction));
 			else
 				player.actions.stop(player.position);
@@ -308,9 +329,10 @@ var World = function(grid, map, players, items) {
 		item.position = location;
 		this.items[item.id] = item;
 		this.grid.set(location, item);
-		console.log(item);
-		console.log(location);
 		this.map.placeItem(item, location);
+	};
+	this.resetItemLocation = function() {
+
 	};
 };
 var Actions = function(performer, options){
@@ -322,6 +344,7 @@ var Actions = function(performer, options){
 	};
 	if(isInOptions('MOVE')) {
 		this.move = function(direction, sSpeed, sAcceleration){
+			// direction is Vector instance
 			if(!movementInterval[this.performer.id]){
 				var player = this.performer;
 				var speed = sSpeed || player.speed;
@@ -343,7 +366,7 @@ var Actions = function(performer, options){
 					}
 					var max = player.acceleration.max;
 					var step = player.acceleration.step;
-					var newBoost =boost+step;
+					var newBoost =Number(boost+step);
 					if(max > 0 ? boost > max : boost < max) 
 						boost = max;
 					world.setInMotion(player, direction);
@@ -363,8 +386,38 @@ var Actions = function(performer, options){
 				sendSocket('STOP', player.position.toString());
 		}
 	} if(isInOptions('PICK')) {
-		this.pick = function(object){
-
+		this.pick = function(){
+			var grid = world.grid;
+			var player = this.performer;
+			var items = grid.getInRange(player.position,1);
+			var item = grid.inDirection(player.position, player.rotationDirection);
+			function takeItem(item){
+				delete world.grid.remove(item.position);
+				item.position = player.position;
+				player.heldItem = item;
+				world.map.moveItem(item);
+			}
+			if(items[0] instanceof Rock && !player.heldItem) {
+				if(items.length > 1){
+					if(grid.inDirection(player.position, player.rotationDirection)){
+						takeItem(grid.inDirection(player.position, player.rotationDirection));
+					}
+				} else {
+					takeItem(items[0]);
+				}
+			}
+		};
+		this.throwItem = function(){
+			var grid = world.grid;
+			var player = this.performer;
+			var direction = directions[player.rotationDirection]
+			var location = player.position.plus(direction);
+			if(grid.isInside(location)){
+				player.heldItem.position = location;
+				grid.set(location, player.heldItem);
+				player.heldItem = null;
+				grid.get(location).actions.move(direction);
+			}
 		};
 	}
 };
@@ -537,10 +590,16 @@ getE('#map').addEventListener('click', function(){
 	getE('#controlls').focus();
 });
 getE('#controlls').addEventListener('keydown', function(){
-	var matches = {38:'s', 40:'n',37:'w',39:'e'};
+	var me = world.players.me;
+	var movement = {38:'s', 40:'n',37:'w',39:'e'};
 	var button = event.keyCode;
-	if(button in matches)
-		world.players.me.actions.move(directions[matches[button]]);
+	if(button in movement)
+		me.actions.move(directions[movement[button]]);
+	else if(button == 32)
+		if(!me.heldItem)
+			me.actions.pick();
+		else
+			me.actions.throwItem();
 });
 getE('#controlls').addEventListener('keyup', function(){
 	var key = event.keyCode;

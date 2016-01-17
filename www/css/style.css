@@ -24,7 +24,7 @@ body {
 	width:100%;
 	height:100%;
 	background:#BEBEBE;
-	z-index: 2;
+	z-index: 10;
 }
 #login div {
 	margin: 0 auto;
@@ -70,7 +70,7 @@ div#login-window input[type="submit"] {
 	box-shadow: 0 0 1px;
 	border-radius: 50%;
 	text-align: center;
-	transition:.1s;
+	transition:.2s;
 }
 #map .player:before, #map .player:after {
 	display: inline-block;
@@ -98,6 +98,9 @@ div#login-window input[type="submit"] {
 	height:3px;
 	display: inline-block;
 	position: absolute;
+	z-index: 2;
+	transition:.2s;
+	margin:1px;
 	border-radius: 50%;
 	box-shadow: 0 0 1px black;
 }
